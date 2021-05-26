@@ -58,6 +58,7 @@
         , resolve_offset/4
         , resolve_offset/5
         , resolve_offset/6
+        , kpro_connection_options/1
         ]).
 
 -include("brod_int.hrl").
@@ -93,7 +94,8 @@ create_topics(Hosts, TopicConfigs, RequestConfigs) ->
                     validate_only => boolean()}, conn_config()) ->
         {ok, kpro:struct()} | {error, any()} | ok.
 create_topics(Hosts, TopicConfigs, RequestConfigs, ConnCfg) ->
-  with_conn(kpro:connect_controller(Hosts, nolink(ConnCfg)),
+  KproOpts = kpro_connection_options(ConnCfg),
+  with_conn(kpro:connect_controller(Hosts, nolink(ConnCfg), KproOpts),
             fun(Pid) ->
                 Request = brod_kafka_request:create_topics(
                   Pid, TopicConfigs, RequestConfigs),
@@ -110,7 +112,8 @@ delete_topics(Hosts, Topics, Timeout) ->
 -spec delete_topics([endpoint()], [topic()], pos_integer(), conn_config()) ->
         {ok, kpro:struct()} | {error, any()}.
 delete_topics(Hosts, Topics, Timeout, ConnCfg) ->
-  with_conn(kpro:connect_controller(Hosts, nolink(ConnCfg)),
+  KproOpts = kpro_connection_options(ConnCfg),
+  with_conn(kpro:connect_controller(Hosts, nolink(ConnCfg), KproOpts),
               fun(Pid) ->
                   Request = brod_kafka_request:delete_topics(
                     Pid, Topics, Timeout),
@@ -148,20 +151,18 @@ get_metadata(Hosts, Topics, ConnCfg) ->
                      offset_time(), conn_config()) ->
         {ok, offset()} | {error, any()}.
 resolve_offset(Hosts, Topic, Partition, Time, ConnCfg) ->
-  Timeout =
-      proplists:get_value(connect_timeout, ConnCfg, ?BROD_DEFAULT_TIMEOUT),
-  Opts = #{timeout => Timeout},
-  resolve_offset(Hosts, Topic, Partition, Time, ConnCfg, Opts).
+  KproOpts = kpro_connection_options(ConnCfg),
+  resolve_offset(Hosts, Topic, Partition, Time, ConnCfg, KproOpts).
 
 %% @doc Resolve timestamp to real offset.
 -spec resolve_offset([endpoint()], topic(), partition(),
                      offset_time(), conn_config(),
                     #{timeout => kpro:int32()}) ->
         {ok, offset()} | {error, any()}.
-resolve_offset(Hosts, Topic, Partition, Time, ConnCfg, Opts) ->
+resolve_offset(Hosts, Topic, Partition, Time, ConnCfg, KproOpts) ->
   with_conn(
     kpro:connect_partition_leader(Hosts, nolink(ConnCfg),
-                                  Topic, Partition, Opts),
+                                  Topic, Partition, KproOpts),
     fun(Pid) -> resolve_offset(Pid, Topic, Partition, Time) end).
 
 %% @doc Resolve timestamp or semantic offset to real offset.
@@ -284,8 +285,9 @@ flatten_batches(BeginOffset, Header, Batches0) ->
 fetch(Hosts, Topic, Partition, Offset, Opts) when is_list(Hosts) ->
   fetch({Hosts, []}, Topic, Partition, Offset, Opts);
 fetch({Hosts, ConnCfg}, Topic, Partition, Offset, Opts) ->
+  KproOpts = kpro_connection_options(ConnCfg),
   with_conn(
-    kpro:connect_partition_leader(Hosts, nolink(ConnCfg), Topic, Partition),
+    kpro:connect_partition_leader(Hosts, nolink(ConnCfg), Topic, Partition, KproOpts),
     fun(Conn) -> fetch(Conn, Topic, Partition, Offset, Opts) end);
 fetch(Client, Topic, Partition, Offset, Opts) when is_atom(Client) ->
   case brod_client:get_leader_connection(Client, Topic, Partition) of
@@ -306,8 +308,9 @@ fold(Hosts, Topic, Partition, Offset, Opts,
      Acc, Fun, Limits) when is_list(Hosts) ->
   fold({Hosts, []}, Topic, Partition, Offset, Opts, Acc, Fun, Limits);
 fold({Hosts, ConnCfg}, Topic, Partition, Offset, Opts, Acc, Fun, Limits) ->
+  KproOpts = kpro_connection_options(ConnCfg),
   case with_conn(
-         kpro:connect_partition_leader(Hosts, nolink(ConnCfg), Topic, Partition),
+         kpro:connect_partition_leader(Hosts, nolink(ConnCfg), Topic, Partition, KproOpts),
          fun(Conn) -> fold(Conn, Topic, Partition, Offset, Opts,
                            Acc, Fun, Limits) end) of
     {error, Reason} ->
@@ -376,7 +379,8 @@ init_sasl_opt(Config) ->
                               group_id(), [topic()]) ->
         {ok, [kpro:struct()]} | {error, any()}.
 fetch_committed_offsets(BootstrapEndpoints, ConnCfg, GroupId, Topics) ->
-  Args = #{type => group, id => GroupId},
+  KproOpts = kpro_connection_options(ConnCfg),
+  Args = maps:merge(KproOpts, #{type => group, id => GroupId}),
   with_conn(
     kpro:connect_coordinator(BootstrapEndpoints, nolink(ConnCfg), Args),
     fun(Pid) -> do_fetch_committed_offsets(Pid, GroupId, Topics) end).
@@ -595,6 +599,16 @@ get_stable_offset(Header) ->
   StableOffset = kpro:find(last_stable_offset, Header, HighWmOffset),
   %% handle the case when high_watermark < last_stable_offset
   min(StableOffset, HighWmOffset).
+
+%% @doc get kpro connection options from brod connection config
+kpro_connection_options(ConnCfg) ->
+  Timeout = case ConnCfg of
+    List when is_list(List) ->
+      proplists:get_value(connect_timeout, List, ?BROD_DEFAULT_TIMEOUT);
+    Map when is_map(Map) ->
+      maps:get(connect_timeout, Map, ?BROD_DEFAULT_TIMEOUT)
+  end,
+  #{timeout => Timeout}.
 
 %%%_* Internal functions =======================================================
 

@@ -1,5 +1,9 @@
 * TBD
   *
+* 3.15.5
+  * Propagate `connect_timeout` config to `kpro` API functions as `timeout` arg
+    affected APIs: connect_group_coordinator, create_topics, delete_topics,
+    resolve_offset, fetch, fold, fetch_committed_offsets
 * 3.15.4
   * Avoid start_link for temp connection usages
     affected APIs: fetch_committed_offsets, fetch, resolve_offset, create_topics, delete_topics
