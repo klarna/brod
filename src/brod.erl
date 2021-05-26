@@ -938,7 +938,8 @@ fetch(Hosts, Topic, Partition, Offset,
 -spec connect_leader([endpoint()], topic(), partition(),
                      conn_config()) -> {ok, pid()}.
 connect_leader(Hosts, Topic, Partition, ConnConfig) ->
-  kpro:connect_partition_leader(Hosts, ConnConfig, Topic, Partition).
+  KproOptions = brod_utils:kpro_connection_options(ConnConfig),
+  kpro:connect_partition_leader(Hosts, ConnConfig, Topic, Partition, KproOptions).
 
 %% @doc List ALL consumer groups in the given kafka cluster.
 %% NOTE: Exception if failed to connect any of the coordinator brokers.
@@ -975,7 +976,8 @@ describe_groups(CoordinatorEndpoint, ConnCfg, IDs) ->
 -spec connect_group_coordinator([endpoint()], conn_config(), group_id()) ->
         {ok, pid()} | {error, any()}.
 connect_group_coordinator(BootstrapEndpoints, ConnCfg, GroupId) ->
-  Args = #{type => group, id => GroupId},
+  KproOptions = brod_utils:kpro_connection_options(ConnCfg),
+  Args = maps:merge(KproOptions, #{type => group, id => GroupId}),
   kpro:connect_coordinator(BootstrapEndpoints, ConnCfg, Args).
 
 %% @doc Fetch committed offsets for ALL topics in the given consumer group.
