@@ -1,28 +1,32 @@
-#!/bin/sh -eu
+#!/bin/sh
 
-THIS=$0
+set -eu
 
-CUR_DIR=`pwd`
-cd `dirname $THIS`
-TARGET_FILE=`basename $THIS`
+THIS="$0"
+CUR_DIR="$(pwd)"
+
+# resolve the dir (maybe sym-linked) in which THIS script resides
+cd "$(dirname "$THIS")"
+TARGET_FILE="$(basename "$THIS")"
+# use a while loop because readlink -f does not always work in all systems
 while [ -L "$TARGET_FILE" ]; do
-    TARGET_FILE=`readlink $TARGET_FILE`
-    cd `dirname $TARGET_FILE`
-    TARGET_FILE=`basename $TARGET_FILE`
+    TARGET_FILE="$(readlink "$TARGET_FILE")"
+    cd "$(dirname "$TARGET_FILE")"
+    TARGET_FILE="$(basename "$TARGET_FILE")"
 done
-BINDIR=`pwd -P`
-export NIF_BIN_DIR=$BINDIR
+BINDIR="$(pwd -P)"
+
+# go back to the original PWD
 cd "$CUR_DIR"
 
-ERTS_DIR=`find $BINDIR/.. -maxdepth 1 -type d -name 'erts-*' -print -quit`
-
-export NIF_BIN_DIR=$BINDIR
-
-if [ -d  "$ERTS_DIR" ]; then
+if [ -x  "$BINDIR/brod-i" ]; then
   # this is a release, try to use erts in release
-  exec $ERTS_DIR/bin/escript $BINDIR/brod_cli "$@"
+  # brod-i find erts bin dir for us
+  exec "$BINDIR/brod-i" escript bin/brod.escript "$@"
 else
-  # hoping the user has erts in PATH
-  exec $BINDIR/brod_cli "$@"
+  # this is not a release, so we assume:
+  # 1. the user has erts in PATH
+  # 2. nif binary files are located in the bin dir
+  export NIF_BIN_DIR=$BINDIR
+  exec "$BINDIR/brod_cli" "$@"
 fi
-

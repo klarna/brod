@@ -30,6 +30,8 @@ INTEGRATION_CTS = brod_cg_commits brod_client brod_compression brod_consumer bro
 brod-cli:
 	@rebar3 as brod_cli do compile,escriptize,release
 	@cp _build/brod_cli/bin/brod_cli _build/brod_cli/rel/brod/bin/
+	@cp scripts/brod _build/brod_cli/rel/brod/bin/
+	@cp scripts/brod.escript _build/brod_cli/rel/brod/bin/
 
 cover:
 	@rebar3 cover -v
